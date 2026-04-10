@@ -119,10 +119,12 @@ func expandHas(arg string) RuleEvaluator {
 
 func emailField(f matchField, arg string) RuleEvaluator {
 	// Gmail doesn't distinguish between @ and .
+	// Gmail's from:/to:/cc: operators use substring matching,
+	// e.g. from:noreply matches noreply@example.com.
 	r := funcNode{
 		field:     f,
 		expected:  normalizeField(arg),
-		matchType: matchTypeExact,
+		matchType: matchTypeContains,
 	}
 	// Asking for *@gmail.com or @gmail.com is the same and means
 	// match the suffix.
