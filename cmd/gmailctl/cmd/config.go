@@ -25,9 +25,11 @@ func configFilenameFromDir(cfgDir string) string {
 	return path.Join(cfgDir, "config.jsonnet")
 }
 
-func parseConfig(path, originalPath string, test bool) (parseResult, error) {
+func parseConfig(path, originalPath string, test bool, verbose ...bool) (parseResult, error) {
 	var res parseResult
 	var err error
+
+	isVerbose := len(verbose) > 0 && verbose[0]
 
 	res.Config, err = config.ReadFile(path, originalPath)
 	if err != nil {
@@ -55,8 +57,13 @@ func parseConfig(path, originalPath string, test bool) (parseResult, error) {
 			stderrPrintf("%+v\n", err)
 		}
 		tres := ts.ExecTests(res.Config.Tests)
+		if isVerbose {
+			stderrPrintf("%s\n", tres.Verbose(res.Config.Tests))
+		}
 		if !tres.OK {
-			stderrPrintf("Test results: %s\n", tres)
+			if !isVerbose {
+				stderrPrintf("Test results: %s\n", tres)
+			}
 			return res, fmt.Errorf("%d/%d config tests failed", len(tres.Failed), tres.NumTests)
 		}
 	}

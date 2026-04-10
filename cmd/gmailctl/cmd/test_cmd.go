@@ -2,7 +2,10 @@ package cmd
 
 import "github.com/spf13/cobra"
 
-var testFilename string
+var (
+	testFilename string
+	testVerbose  bool
+)
 
 // testCmd represents the test command
 var testCmd = &cobra.Command{
@@ -38,9 +41,10 @@ func init() {
 
 	// Flags and configuration settings
 	testCmd.PersistentFlags().StringVarP(&testFilename, "filename", "f", "", "configuration file")
+	testCmd.PersistentFlags().BoolVarP(&testVerbose, "verbose", "v", true, "print all test results, not just failures")
 }
 
 func test(path string) error {
-	_, err := parseConfig(path, "", true)
+	_, err := parseConfig(path, "", true, testVerbose)
 	return err
 }

@@ -50,10 +50,9 @@ type Rule struct {
 type Rules []Rule
 
 // ExecTests evaluates all the rules against the given tests.
-//
-// The evaluation stops at the first failing test.
 func (rs Rules) ExecTests(ts []v1alpha3.Test) Result {
 	var failed []FailedTest
+	failedSet := map[int]bool{}
 
 	for i, t := range ts {
 		if errs := rs.ExecTest(t); len(errs) > 0 {
@@ -62,13 +61,15 @@ func (rs Rules) ExecTests(ts []v1alpha3.Test) Result {
 				Name:   t.Name,
 				Errors: errs,
 			})
+			failedSet[i] = true
 		}
 	}
 
 	return Result{
-		OK:       len(failed) == 0,
-		NumTests: len(ts),
-		Failed:   failed,
+		OK:        len(failed) == 0,
+		NumTests:  len(ts),
+		Failed:    failed,
+		failedSet: failedSet,
 	}
 }
 
@@ -144,9 +145,10 @@ func (rs Rules) MatchingActions(msg v1alpha3.Message) (Actions, error) {
 
 // Result represents the result of a series of tests.
 type Result struct {
-	OK       bool
-	NumTests int
-	Failed   []FailedTest
+	OK        bool
+	NumTests  int
+	Failed    []FailedTest
+	failedSet map[int]bool
 }
 
 func (r Result) String() string {
@@ -162,6 +164,65 @@ func (r Result) String() string {
 	}
 
 	return buf.String()
+}
+
+// Verbose returns a full report of all tests, showing pass/fail status,
+// message details (from, subject, body), and matched actions for each test.
+func (r Result) Verbose(ts []v1alpha3.Test) string {
+	var buf bytes.Buffer
+	passed := r.NumTests - len(r.Failed)
+	fmt.Fprintf(&buf, "Test results: %d passed, %d failed, %d total\n", passed, len(r.Failed), r.NumTests)
+	buf.WriteString(strings.Repeat("-", 70) + "\n")
+
+	failIdx := 0
+	for i, t := range ts {
+		name := t.Name
+		if name == "" {
+			name = fmt.Sprintf("#%d", i)
+		}
+		if r.failedSet[i] {
+			fmt.Fprintf(&buf, "FAIL  %s\n", name)
+			dumpMessages(&buf, t.Messages)
+			if failIdx < len(r.Failed) {
+				r.Failed[failIdx].dump(&buf)
+				failIdx++
+			}
+		} else {
+			fmt.Fprintf(&buf, "PASS  %s\n", name)
+			dumpMessages(&buf, t.Messages)
+			fmt.Fprintf(&buf, "      actions: %s\n", reporting.Prettify(t.Actions, true))
+		}
+	}
+
+	buf.WriteString(strings.Repeat("-", 70) + "\n")
+	if r.OK {
+		fmt.Fprintf(&buf, "OK: %d/%d passed\n", r.NumTests, r.NumTests)
+	} else {
+		fmt.Fprintf(&buf, "FAILED: %d/%d passed\n", passed, r.NumTests)
+	}
+
+	return buf.String()
+}
+
+// dumpMessages writes the from, to, subject, and body of each message.
+func dumpMessages(w io.Writer, msgs []v1alpha3.Message) {
+	for _, msg := range msgs {
+		if msg.From != "" {
+			fmt.Fprintf(w, "      from: %s\n", msg.From)
+		}
+		if len(msg.To) > 0 {
+			fmt.Fprintf(w, "      to: %s\n", strings.Join(msg.To, ", "))
+		}
+		if len(msg.Cc) > 0 {
+			fmt.Fprintf(w, "      cc: %s\n", strings.Join(msg.Cc, ", "))
+		}
+		if msg.Subject != "" {
+			fmt.Fprintf(w, "      subject: %s\n", msg.Subject)
+		}
+		if msg.Body != "" {
+			fmt.Fprintf(w, "      body: %s\n", msg.Body)
+		}
+	}
 }
 
 // FailedTest includes all the errors of a failed test.
